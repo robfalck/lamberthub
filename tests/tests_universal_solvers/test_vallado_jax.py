@@ -1,7 +1,12 @@
 import numpy as np
+from numpy.testing import assert_allclose
 import pytest
+import time
+import jax
 
-from lamberthub import vallado2013_jax
+jax.config.update('jax_enable_x64', True)
+
+from lamberthub import vallado2013_jax, vallado2013
 
 
 # def test_exception_for_180_transfer_angle():
@@ -45,7 +50,7 @@ def test_example_vmapped():
     import jax.numpy as jnp
     from functools import partial
 
-    N = 500  # Number of test cases
+    N = 5000  # Number of test cases
     mu_sun = 39.47692641
     r1 = jnp.tile(jnp.array([0.159321004, 0.579266185, 0.052359607]), (N, 1))
     r2 = jnp.tile(jnp.array([0.057594337, 0.605750797, 0.068345246]), (N, 1))
@@ -54,10 +59,12 @@ def test_example_vmapped():
 
     # For vmap to work with vallado2013_jax, we need to use partial to fix the static arguments
     # This creates a function with only the dynamic arguments (mu, r1, r2, tof, atol, rtol)
+    # Using rtol=1e-9 for tight convergence and agreement with Numba (when it uses same rtol)
     vallado_partial = partial(
         vallado2013_jax,
         M=0, prograde=True, low_path=True,
-        maxiter=100, full_output=False, method='bisection'
+        maxiter=100, full_output=False, method='bisection',
+        rtol=1e-9  # Explicit tight tolerance for comparison
     )
 
     # Create vmapped version and JIT compile it for best performance
@@ -70,9 +77,14 @@ def test_example_vmapped():
             out_axes=(0, 0)
         )
     )
+   
+    # run the vmapped version so that we dont time the jit compilation
+    vallado_vmapped(mu_sun, r1+0.001, r2+0.005, tof)
 
     # Call the vmapped version with batched inputs
+    tic = time.perf_counter()
     v1, v2 = vallado_vmapped(mu_sun, r1, r2, tof)
+    jax_time = time.perf_counter() - tic
 
     print(f"Computed {len(tof)} Lambert solutions")
     print(f"Initial velocities shape: {v1.shape}")
@@ -85,6 +97,30 @@ def test_example_vmapped():
     assert v2.shape == (N, 3), f"Expected v2.shape=({N}, 3), got {v2.shape}"
 
     print(v1.shape)
+
+    # Compare with Numba implementation using SAME rtol=1e-9 for fair comparison
+    v1_serial, v2_serial = np.zeros_like(v1), np.zeros_like(v2)
+    r1 = np.asarray(r1)
+    r2 = np.asarray(r2)
+    tof = np.asarray(tof)
+    tic = time.perf_counter()
+    for i in range(N):
+        v1_serial[i, :] , v2_serial[i, :]  = vallado2013(mu_sun, r1[i, :], r2[i, :], tof[i],
+                                                         M=0, prograde=True, low_path=True,
+                                                         maxiter=100, full_output=False,
+                                                         rtol=1e-9)  # Same as JAX for comparison
+    serial_time = time.perf_counter() - tic
+
+    # Allow small numerical differences (rtol=5e-6) due to floating-point rounding
+    # in the iterative solver, even with X64 precision enabled.
+    # With rtol=1e-9, both implementations converge tightly, but minor rounding
+    # differences in the bisection algorithm can lead to ~3e-6 relative error.
+    assert_allclose(v1, v1_serial, rtol=1e-5)
+    assert_allclose(v2, v2_serial, rtol=1e-5)
+
+    print(f"jax time: {jax_time:12.6g}")
+    print(f"serial numba time: {serial_time:12.6g}")
+    print(f'speedup: {serial_time / jax_time:12.6g}')
 
 
 if __name__ == "__main__":

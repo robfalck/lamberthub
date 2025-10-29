@@ -18,7 +18,7 @@ def vallado2013(
     low_path=True,
     maxiter=100,
     atol=1e-5,
-    rtol=1e-7,
+    rtol=1e-9,
     full_output=False,
     method='brent',
 ):
@@ -49,7 +49,8 @@ def vallado2013(
     atol: float
         Absolute tolerance.
     rtol: float
-        Relative tolerance.
+        Relative tolerance. Default is 1e-9 (stricter than the original Numba
+        implementation's 1e-7) to ensure close agreement between implementations.
     full_output: bool
         If True, the number of iterations and time per iteration are also returned.
     method: str
@@ -206,9 +207,9 @@ def _bisection_solve(mu, r1_norm, r2_norm, A, tof, psi_init, psi_low_init, psi_u
         psi_up_new = jnp.where(condition, psi_up, psi)
         psi_new = (psi_up_new + psi_low_new) / 2
 
-        # Check convergence (relative error or new bracket width)
+        # Check convergence (only relative error, matching original Numba implementation)
         rel_error = jnp.abs((tof_new - tof) / tof)
-        converged_new = (rel_error < rtol) | (jnp.abs(psi_up_new - psi_low_new) < 1e-10)
+        converged_new = rel_error < rtol
 
         return psi_new, psi_low_new, psi_up_new, numiter + 1, tof_new, converged_new
 
