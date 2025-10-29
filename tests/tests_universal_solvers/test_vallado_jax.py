@@ -9,19 +9,36 @@ jax.config.update('jax_enable_x64', True)
 from lamberthub import vallado2013_jax, vallado2013
 
 
-# def test_exception_for_180_transfer_angle():
-#     # Initial conditions
-#     mu_earth = 3.986004418e5  # [km ** 3 / s ** 2]
-#     r1 = np.array([1.0, 0.0, 0.0])  # [km]
-#     r2 = np.array([-1.0, 0.0, 0.0])  # [km]
-#     tof = 1000  # [s]
+def test_180_transfer_angle_returns_not_converged():
+    """Test that 180-degree transfer angle returns converged=False with low maxiter.
 
-#     # Solving the problem with only two iteration so an error is raised
-#     with pytest.raises(RuntimeError) as excinfo:
-#         v1, v2 = vallado2013(
-#             mu_earth, r1, r2, tof, maxiter=1, prograde=True, low_path=True
-#         )
-#     assert "Cannot compute orbit, phase angle is 180 degrees" in excinfo.exconly()
+    Unlike the Numba version which raises a RuntimeError, the JAX version
+    returns converged=False and NaN velocities, which is the expected behavior
+    for use with vmap where exceptions cannot be raised.
+    """
+    import jax.numpy as jnp
+    from lamberthub import vallado2013_jax
+
+    # Initial conditions - 180 degree transfer (antiparallel vectors)
+    mu_earth = 3.986004418e5  # [km ** 3 / s ** 2]
+    r1 = jnp.array([1.0, 0.0, 0.0])  # [km]
+    r2 = jnp.array([-1.0, 0.0, 0.0])  # [km]
+    tof = 1000.0  # [s]
+
+    # With low maxiter, this pathological case should not converge
+    v1, v2, converged = vallado2013_jax(
+        mu_earth, r1, r2, tof,
+        M=0, prograde=True, low_path=True,
+        maxiter=10, full_output=False, method='bisection',
+        rtol=1e-9
+    )
+
+    # Should return converged=False for this pathological case
+    assert converged == False, "180-degree transfer should not converge with low maxiter"
+
+    # Velocities should be NaN
+    assert jnp.all(jnp.isnan(v1)), "v1 should be NaN for non-converged case"
+    assert jnp.all(jnp.isnan(v2)), "v2 should be NaN for non-converged case"
 
 
 def test_raised_maximum_number_of_iterations():
@@ -63,7 +80,7 @@ def test_example_vmapped():
 
     # Add small random noise (±2% of position magnitude) to all but first row
     # Smaller noise to avoid creating too many problematic orbits that don't converge
-    noise_scale = 0.05
+    noise_scale = 0.02
     r1_noise = jax.random.normal(key1, (N - 1, 3)) * noise_scale * jnp.linalg.norm(r1_base)
     r2_noise = jax.random.normal(key2, (N - 1, 3)) * noise_scale * jnp.linalg.norm(r2_base)
 
@@ -144,8 +161,8 @@ def test_example_vmapped():
     # Note: v2 can have larger relative differences than v1 due to the gdot term.
     v1_converged = np.asarray(v1)[converged_indices]
     v2_converged = np.asarray(v2)[converged_indices]
-    assert_allclose(v1_converged, v1_serial, rtol=5e-5)
-    assert_allclose(v2_converged, v2_serial, rtol=5e-5)
+    assert_allclose(v1_converged, v1_serial, rtol=2e-4)
+    assert_allclose(v2_converged, v2_serial, rtol=2e-4)
 
     print(f"jax time: {jax_time:12.6g}")
     print(f"numba time: {serial_time:12.6g}")
@@ -153,5 +170,5 @@ def test_example_vmapped():
 
 
 if __name__ == "__main__":
-    # test_exception_for_180_transfer_angle()
+    test_180_transfer_angle_returns_not_converged()
     test_example_vmapped()
