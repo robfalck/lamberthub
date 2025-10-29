@@ -60,13 +60,22 @@ def vallado2013(
     Returns
     -------
     v1: jax.numpy.array
-        Initial velocity vector.
+        Initial velocity vector. NaN if failed to converge.
     v2: jax.numpy.array
-        Final velocity vector.
+        Final velocity vector. NaN if failed to converge.
+    converged: bool
+        True if solver converged within maxiter, False otherwise.
     numiter: int
         Number of iterations (if full_output=True).
     tpi: float
         Time per iteration in seconds (if full_output=True).
+
+    Notes on convergence
+    --------------------
+    Unlike the Numba version which raises ValueError on non-convergence, this
+    JAX version returns NaN velocities and converged=False. This allows the
+    function to work with vmap where different cases may have different
+    convergence behavior.
 
     Notes
     -----
@@ -135,11 +144,11 @@ def _vallado2013_impl(mu, r1, r2, tof, M, prograde, low_path, maxiter, atol, rto
 
     # Choose solver based on method parameter
     if method == 'bisection':
-        psi, _, _, numiter = _bisection_solve(
+        psi, _, _, numiter, converged = _bisection_solve(
             mu, r1_norm, r2_norm, A_safe, tof, psi_init, psi_low_init, psi_up_init, maxiter, rtol
         )
     elif method == 'brent':
-        psi, _, _, numiter = _brent_solve(
+        psi, _, _, numiter, converged = _brent_solve(
             mu, r1_norm, r2_norm, A_safe, tof, psi_init, psi_low_init, psi_up_init, maxiter, rtol
         )
     else:
@@ -154,10 +163,15 @@ def _vallado2013_impl(mu, r1, r2, tof, M, prograde, low_path, maxiter, atol, rto
     v1 = (r2 - f * r1) / g
     v2 = (gdot * r2 - r1) / g
 
+    # Set velocities to NaN if did not converge
+    nan_vec = jnp.full(3, jnp.nan)
+    v1 = jnp.where(converged, v1, nan_vec)
+    v2 = jnp.where(converged, v2, nan_vec)
+
     if full_output:
-        return v1, v2, numiter, 0.0  # tpi not computed in JAX version
+        return v1, v2, converged, numiter, 0.0  # tpi not computed in JAX version
     else:
-        return v1, v2
+        return v1, v2, converged
 
 
 def _bisection_solve(mu, r1_norm, r2_norm, A, tof, psi_init, psi_low_init, psi_up_init, maxiter, rtol):
@@ -217,11 +231,11 @@ def _bisection_solve(mu, r1_norm, r2_norm, A, tof, psi_init, psi_low_init, psi_u
     init_state = (psi_init, psi_low_init, psi_up_init, 0, 0.0, False)
 
     # Run bisection loop
-    psi_final, psi_low_final, psi_up_final, numiter_final, _, _ = jax.lax.while_loop(
+    psi_final, psi_low_final, psi_up_final, numiter_final, _, converged_final = jax.lax.while_loop(
         outer_cond, outer_body, init_state
     )
 
-    return psi_final, psi_low_final, psi_up_final, numiter_final
+    return psi_final, psi_low_final, psi_up_final, numiter_final, converged_final
 
 
 def _brent_solve(mu, r1_norm, r2_norm, A, tof, psi_init, psi_low_init, psi_up_init, maxiter, rtol):
