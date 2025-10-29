@@ -7,6 +7,8 @@ from lamberthub.universal_solvers.arora import arora2013
 from lamberthub.universal_solvers.gooding import gooding1990
 from lamberthub.universal_solvers.izzo import izzo2015
 from lamberthub.universal_solvers.vallado import vallado2013
+from lamberthub.universal_solvers.vallado_jax import vallado2013 as vallado2013_jax
+
 
 __author__ = "Jorge Martinez Garrido"
 __version__ = "1.0.0"

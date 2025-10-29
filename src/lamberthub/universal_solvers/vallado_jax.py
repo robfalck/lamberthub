@@ -7,6 +7,7 @@ from lamberthub.utils.angles_jax import get_transfer_angle
 from lamberthub.utils.stumpff_jax import c2, c3
 
 
+@jax.tree_util.Partial(jax.jit, static_argnames=['M', 'prograde', 'low_path', 'maxiter', 'full_output', 'method'])
 def vallado2013(
     mu,
     r1,
@@ -70,6 +71,11 @@ def vallado2013(
     -----
     This JAX implementation uses `jax.lax.while_loop` for the iterative solver,
     making it compatible with JIT compilation and automatic differentiation.
+
+    **JIT compilation**: This function is pre-decorated with `@jax.jit` with static
+    arguments ['M', 'prograde', 'low_path', 'maxiter', 'full_output', 'method'].
+    You can call it directly without wrapping it in `jax.jit()` again. If you want
+    to JIT compile it yourself, use `jax.jit(vallado2013, static_argnames=[...])`.
 
     **Note on differentiation**: Currently, gradients are computed by differentiating
     through the entire iterative solver. For production use, consider implementing
