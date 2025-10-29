@@ -179,13 +179,15 @@ def _bisection_solve(mu, r1_norm, r2_norm, A, tof, psi_init, psi_low_init, psi_u
 
     def inner_while_cond(state):
         """Condition for the inner while loop (y < 0 adjustment)."""
-        _, y, A_val, iteration_count = state
+        _, _, y, A_val, iteration_count = state
         # Limit iterations to prevent infinite loops
         return (y < 0.0) & (A_val > 0.0) & (iteration_count < 100)
 
     def inner_while_body(state):
         """Body of the inner while loop."""
-        psi, _, A_val, iteration_count = state
+        psi, psi_low, _, A_val, iteration_count = state
+        # Update psi_low to current psi (move lower bound up)
+        psi_low_new = psi
         # Update psi to make y positive
         psi_new = (
             0.8
@@ -193,7 +195,7 @@ def _bisection_solve(mu, r1_norm, r2_norm, A, tof, psi_init, psi_low_init, psi_u
             * (1.0 - (r1_norm * r2_norm) * jnp.sqrt(c2(psi)) / A_val)
         )
         y_new = _y_at_psi(psi_new, r1_norm, r2_norm, A_val)
-        return psi_new, y_new, A_val, iteration_count + 1
+        return psi_new, psi_low_new, y_new, A_val, iteration_count + 1
 
     def outer_cond(state):
         """Condition for the outer bisection loop."""
@@ -208,8 +210,8 @@ def _bisection_solve(mu, r1_norm, r2_norm, A, tof, psi_init, psi_low_init, psi_u
         y = _y_at_psi(psi, r1_norm, r2_norm, A)
 
         # Adjust psi if A > 0 and y < 0 using inner while loop
-        init_state = (psi, y, A, 0)
-        psi, y, _, _ = jax.lax.while_loop(inner_while_cond, inner_while_body, init_state)
+        init_state = (psi, psi_low, y, A, 0)
+        psi, psi_low, y, _, _ = jax.lax.while_loop(inner_while_cond, inner_while_body, init_state)
 
         # Compute X and time of flight
         X = _X_at_psi(psi, y)

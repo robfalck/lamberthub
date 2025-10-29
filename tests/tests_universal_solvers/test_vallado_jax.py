@@ -63,7 +63,7 @@ def test_example_vmapped():
 
     # Add small random noise (±2% of position magnitude) to all but first row
     # Smaller noise to avoid creating too many problematic orbits that don't converge
-    noise_scale = 0.02
+    noise_scale = 0.05
     r1_noise = jax.random.normal(key1, (N - 1, 3)) * noise_scale * jnp.linalg.norm(r1_base)
     r2_noise = jax.random.normal(key2, (N - 1, 3)) * noise_scale * jnp.linalg.norm(r2_base)
 
@@ -144,11 +144,11 @@ def test_example_vmapped():
     # Note: v2 can have larger relative differences than v1 due to the gdot term.
     v1_converged = np.asarray(v1)[converged_indices]
     v2_converged = np.asarray(v2)[converged_indices]
-    assert_allclose(v1_converged, v1_serial, rtol=2e-4)
-    assert_allclose(v2_converged, v2_serial, rtol=2e-4)
+    assert_allclose(v1_converged, v1_serial, rtol=5e-5)
+    assert_allclose(v2_converged, v2_serial, rtol=5e-5)
 
     print(f"jax time: {jax_time:12.6g}")
-    print(f"serial numba time: {serial_time:12.6g}")
+    print(f"numba time: {serial_time:12.6g}")
     print(f'speedup: {serial_time / jax_time:12.6g}')
 
 
